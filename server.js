@@ -17,7 +17,7 @@ if (!FILE_API_KEY) {
 
     process.exit(1);
 }
-const PORT = 5005;
+const PORT = process.env.PORT;
 
 // Base upload directory
 const UPLOAD_DIR = process.env.UPLOAD_FOLDER_PATH;
@@ -129,6 +129,64 @@ const upload = multer({
 
 /*
 |--------------------------------------------------------------------------
+| File API authentication
+|--------------------------------------------------------------------------
+*/
+
+function authenticateFileAPI(req, res, next) {
+
+    const providedKey =
+        req.get("X-API-Key");
+
+    if (!providedKey) {
+
+        return res.status(401).json({
+            success: false,
+            message: "API key required"
+        });
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Timing-safe comparison
+    |--------------------------------------------------------------------------
+    */
+
+    const providedBuffer =
+        Buffer.from(providedKey);
+
+    const expectedBuffer =
+        Buffer.from(FILE_API_KEY);
+
+    if (
+        providedBuffer.length !==
+        expectedBuffer.length
+    ) {
+
+        return res.status(401).json({
+            success: false,
+            message: "Invalid API key"
+        });
+    }
+
+    if (
+        !crypto.timingSafeEqual(
+            providedBuffer,
+            expectedBuffer
+        )
+    ) {
+
+        return res.status(401).json({
+            success: false,
+            message: "Invalid API key"
+        });
+    }
+
+    next();
+}
+
+/*
+|--------------------------------------------------------------------------
 | Upload file
 |--------------------------------------------------------------------------
 |
@@ -144,6 +202,7 @@ const upload = multer({
 
 app.post(
     "/api/files/upload",
+    authenticateFileAPI,
     upload.single("file"),
     (req, res) => {
 
@@ -188,6 +247,7 @@ app.post(
 
 app.get(
     "/api/files/next",
+    authenticateFileAPI,
     (req, res) => {
 
         let allFiles = [];
@@ -304,6 +364,7 @@ app.get(
 
 app.get(
     "/api/files/download/:folder/:filename",
+    authenticateFileAPI,
     (req, res) => {
 
         const folder =
@@ -401,6 +462,7 @@ app.get(
 
 app.post(
     "/api/files/ack",
+    authenticateFileAPI,
     (req, res) => {
 
         const {
@@ -518,7 +580,7 @@ app.post(
 */
 
 app.get(
-    "/api/health",
+    "/",
     (req, res) => {
 
         res.json({
