@@ -3,15 +3,24 @@ const multer = require("multer");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const cors = require("cors");
 
 const app = express();
-
+require("dotenv").config();
 app.use(express.json());
+const FILE_API_KEY = process.env.FILE_API_KEY;
 
+if (!FILE_API_KEY) {
+    console.error(
+        "ERROR: FILE_API_KEY is not configured in .env"
+    );
+
+    process.exit(1);
+}
 const PORT = 5005;
 
 // Base upload directory
-const UPLOAD_DIR = "/root/Desktop/vinit/server/uploads";
+const UPLOAD_DIR = process.env.UPLOAD_FOLDER_PATH;
 
 // Allowed folders
 const ALLOWED_FOLDERS = [
@@ -19,6 +28,47 @@ const ALLOWED_FOLDERS = [
     "express",
     "cash"
 ];
+
+const ALLOWED_ORIGINS = [
+    process.env.ORIGIN
+];
+
+app.use(
+    cors({
+        origin: function (origin, callback) {
+
+            // Allow requests with no Origin header
+            // such as curl, Postman, Node.js downloader, etc.
+            if (!origin) {
+                return callback(null, true);
+            }
+
+            if (ALLOWED_ORIGINS.includes(origin)) {
+                return callback(null, true);
+            }
+
+            console.log(
+                "Blocked CORS origin:",
+                origin
+            );
+
+            return callback(
+                new Error("Origin not allowed")
+            );
+        },
+
+        methods: [
+            "GET",
+            "POST",
+            "OPTIONS"
+        ],
+
+        allowedHeaders: [
+            "Content-Type",
+            "Authorization"
+        ]
+    })
+);
 
 // Create folders
 for (const folder of ALLOWED_FOLDERS) {
