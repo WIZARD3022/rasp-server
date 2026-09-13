@@ -127,6 +127,27 @@ const upload = multer({
     storage
 });
 
+function metadataPath(folder, filename) {
+    return path.join(
+        UPLOAD_DIR,
+        folder,
+        `.${filename}.meta.json`
+    );
+}
+
+function readFileMetadata(folder, filename) {
+    try {
+        return JSON.parse(
+            fs.readFileSync(
+                metadataPath(folder, filename),
+                "utf8"
+            )
+        );
+    } catch {
+        return {};
+    }
+}
+
 /*
 |--------------------------------------------------------------------------
 | File API authentication
@@ -220,6 +241,27 @@ app.post(
             `New file received: ${folder}/${req.file.filename}`
         );
 
+        const metadata = {
+            jobId: req.body.jobId || req.body._id || req.body.id,
+            userId: req.body.userId,
+            orderId: req.body.orderId,
+            options: req.body.options,
+            originalName: req.file.originalname
+        };
+
+        if (typeof metadata.options === "string") {
+            try {
+                metadata.options = JSON.parse(metadata.options);
+            } catch {
+                delete metadata.options;
+            }
+        }
+
+        fs.writeFileSync(
+            metadataPath(folder, req.file.filename),
+            JSON.stringify(metadata)
+        );
+
         res.status(201).json({
 
             success: true,
@@ -295,11 +337,19 @@ app.get(
                         continue;
                     }
 
+                    if (filename.startsWith(".") && filename.endsWith(".meta.json")) {
+                        continue;
+                    }
+
+                    const metadata = readFileMetadata(folder, filename);
+
                     allFiles.push({
 
                         folder,
 
                         name: filename,
+
+                        ...metadata,
 
                         size: stat.size,
 
@@ -558,6 +608,15 @@ app.post(
                 console.log(
                     `Deleted: ${folder}/${safeFilename}`
                 );
+
+                const metadataFile = metadataPath(
+                    folder,
+                    safeFilename
+                );
+
+                if (fs.existsSync(metadataFile)) {
+                    fs.unlinkSync(metadataFile);
+                }
 
                 res.json({
 
