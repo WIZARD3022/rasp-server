@@ -148,6 +148,28 @@ function readFileMetadata(folder, filename) {
     }
 }
 
+function findFileByOriginalName(folder, originalName) {
+    const folderPath = path.join(UPLOAD_DIR, folder);
+
+    for (const filename of fs.readdirSync(folderPath)) {
+        if (filename.startsWith(".") && filename.endsWith(".meta.json")) {
+            continue;
+        }
+
+        const filePath = path.join(folderPath, filename);
+        if (!fs.statSync(filePath).isFile()) {
+            continue;
+        }
+
+        const metadata = readFileMetadata(folder, filename);
+        if (metadata.originalName === originalName || filename === originalName) {
+            return { filename, filePath };
+        }
+    }
+
+    return null;
+}
+
 /*
 |--------------------------------------------------------------------------
 | File API authentication
@@ -491,6 +513,100 @@ app.get(
                 }
             }
         );
+    }
+);
+
+app.get(
+    "/api/files/download-by-original/:folder/:originalName",
+    authenticateFileAPI,
+    (req, res) => {
+        const folder = req.params.folder;
+        const originalName = req.params.originalName;
+
+        if (!ALLOWED_FOLDERS.includes(folder)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid folder"
+            });
+        }
+
+        let match;
+
+        try {
+            match = findFileByOriginalName(folder, originalName);
+        } catch (error) {
+            console.error("File lookup error:", error.message);
+            return res.status(500).json({
+                success: false,
+                message: "Could not search for file"
+            });
+        }
+
+        if (!match) {
+            return res.status(404).json({
+                success: false,
+                message: "File not found"
+            });
+        }
+
+        res.download(match.filePath, originalName, error => {
+            if (error) {
+                console.error("Download error:", error.message);
+            }
+        });
+    }
+);
+
+app.post(
+    "/api/files/ack-by-original",
+    authenticateFileAPI,
+    (req, res) => {
+        const { folder, originalName } = req.body;
+
+        if (!folder || !originalName || !ALLOWED_FOLDERS.includes(folder)) {
+            return res.status(400).json({
+                success: false,
+                message: "folder and originalName are required"
+            });
+        }
+
+        let match;
+
+        try {
+            match = findFileByOriginalName(folder, originalName);
+        } catch (error) {
+            console.error("File lookup error:", error.message);
+            return res.status(500).json({
+                success: false,
+                message: "Could not search for file"
+            });
+        }
+
+        if (!match) {
+            return res.status(404).json({
+                success: false,
+                message: "File already deleted or does not exist"
+            });
+        }
+
+        fs.unlink(match.filePath, error => {
+            if (error) {
+                return res.status(500).json({
+                    success: false,
+                    message: "Could not delete file"
+                });
+            }
+
+            const metadataFile = metadataPath(folder, match.filename);
+            if (fs.existsSync(metadataFile)) {
+                fs.unlinkSync(metadataFile);
+            }
+
+            res.json({
+                success: true,
+                message: "File deleted successfully"
+            });
+        });
     }
 );
 
